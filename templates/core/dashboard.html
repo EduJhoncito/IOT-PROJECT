@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Dashboard · IGP{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="section-head">
+    <h2>Estado en tiempo real</h2>
+    <div class="legend">
+      <span class="pill ok">OK</span>
+      <span class="pill warn">Alerta</span>
+    </div>
+  </div>
+  <div id="sensor-grid" class="grid"></div>
+</section>
+
+<section class="section">
+  <h3>Detalle</h3>
+  <div class="table-wrapper">
+    <table id="readings-table">
+      <thead>
+        <tr>
+          <th>Sensor</th>
+          <th>Nombre</th>
+          <th>Humedad</th>
+          <th>Inclinación</th>
+          <th>Vibración</th>
+          <th>Hora</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="muted">Actualización cada 2 segundos.</p>
+  </section>
+
+<script src="{% static 'core/dashboard.js' %}"></script>
+{% endblock %}

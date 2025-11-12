@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: igp-dashboard
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    startCommand: gunicorn igp_dashboard.wsgi --log-file -
+    autoDeploy: true
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: igp-dashboard.onrender.com
+      - key: CSRF_TRUSTED_ORIGINS
+        value: https://igp-dashboard.onrender.com
+      - key: DATABASE_URL_HISTORICAL
+        fromDatabase:
+          name: igp-historical
+          property: connectionString
+      - key: DATABASE_URL_CACHE
+        fromDatabase:
+          name: igp-cache
+          property: connectionString
+      - key: INGEST_TOKEN
+        generateValue: true
+
+databases:
+  - name: igp-historical
+    plan: free
+  - name: igp-cache
+    plan: free
+
