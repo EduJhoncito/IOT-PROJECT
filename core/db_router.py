@@ -1,4 +1,5 @@
 from typing import Optional
+import os
 
 
 class SensorDataRouter:
@@ -10,18 +11,19 @@ class SensorDataRouter:
     """
 
     app_label_core = 'core'
+    single_db = os.getenv('SINGLE_DB', 'false').lower() == 'true'
 
     def db_for_read(self, model, **hints) -> Optional[str]:
         if model._meta.app_label == self.app_label_core:
             if model.__name__ == 'RealtimeReading':
-                return 'cache'
+                return 'historical' if self.single_db else 'cache'
             return 'historical'
         return None
 
     def db_for_write(self, model, **hints) -> Optional[str]:
         if model._meta.app_label == self.app_label_core:
             if model.__name__ == 'RealtimeReading':
-                return 'cache'
+                return 'historical' if self.single_db else 'cache'
             return 'historical'
         return None
 
@@ -32,15 +34,18 @@ class SensorDataRouter:
         return None
 
     def allow_migrate(self, db, app_label, model_name=None, **hints):
-        if app_label == self.app_label_core:
-            if model_name == 'realtimereading':
-                return db == 'cache'
-            # Sensor and SensorReading
-            return db == 'historical'
-
-        # Django built-ins to historical by default
+        # Built-ins always on historical
         if app_label in {'auth', 'admin', 'contenttypes', 'sessions'}:
             return db == 'historical'
 
-        return None
+        if app_label == self.app_label_core:
+            # In SINGLE_DB mode, migrate ALL core models on 'historical' only
+            if self.single_db:
+                return db == 'historical'
 
+            # Multi-DB mode: split by model
+            if model_name == 'realtimereading':
+                return db == 'cache'
+            return db == 'historical'
+
+        return None

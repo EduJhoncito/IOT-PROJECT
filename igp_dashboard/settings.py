@@ -46,6 +46,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'core.context_processors.custom_user',
             ],
         },
     },
@@ -70,7 +71,13 @@ def _parse_db(url: str, sqlite_name: str):
 
 # Databases: default -> historical, plus cache
 historical_db = _parse_db(os.getenv('DATABASE_URL_HISTORICAL', ''), 'db.sqlite3')
-cache_db = _parse_db(os.getenv('DATABASE_URL_CACHE', ''), 'db_cache.sqlite3')
+
+# SINGLE_DB mode: use one database for everything if SINGLE_DB=true or no CACHE url provided
+SINGLE_DB = os.getenv('SINGLE_DB', 'false').lower() == 'true'
+if SINGLE_DB or not os.getenv('DATABASE_URL_CACHE'):
+    cache_db = historical_db
+else:
+    cache_db = _parse_db(os.getenv('DATABASE_URL_CACHE', ''), 'db_cache.sqlite3')
 
 DATABASES = {
     'default': historical_db,

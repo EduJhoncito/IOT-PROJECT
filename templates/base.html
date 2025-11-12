@@ -18,9 +18,9 @@
         </div>
       </div>
       <nav class="nav">
-        {% if user.is_authenticated %}
-          <span class="user-pill">{{ user.username }}</span>
-          <a class="btn btn-outline" href="/accounts/logout/">Salir</a>
+        {% if custom_user %}
+          <span class="user-pill">{{ custom_user.username }}</span>
+          <a class="btn btn-outline" href="/logout/">Salir</a>
         {% endif %}
       </nav>
     </div>

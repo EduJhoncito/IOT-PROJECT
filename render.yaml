@@ -15,20 +15,15 @@ services:
         value: igp-dashboard.onrender.com
       - key: CSRF_TRUSTED_ORIGINS
         value: https://igp-dashboard.onrender.com
+      - key: SINGLE_DB
+        value: "true"
       - key: DATABASE_URL_HISTORICAL
         fromDatabase:
-          name: igp-historical
-          property: connectionString
-      - key: DATABASE_URL_CACHE
-        fromDatabase:
-          name: igp-cache
+          name: igp-db
           property: connectionString
       - key: INGEST_TOKEN
         generateValue: true
 
 databases:
-  - name: igp-historical
+  - name: igp-db
     plan: free
-  - name: igp-cache
-    plan: free
-

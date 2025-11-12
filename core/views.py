@@ -8,32 +8,63 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView
 
-from .models import Sensor, RealtimeReading, SensorReading
+from .models import Sensor, RealtimeReading, SensorReading, AppUser
 import os
+from .auth import CustomLoginRequiredMixin, get_current_user, login_user, logout_user
+from django.db import connections
+from django.db.utils import OperationalError
 
 
-class DashboardView(LoginRequiredMixin, TemplateView):
+class DashboardView(CustomLoginRequiredMixin, TemplateView):
     template_name = 'core/dashboard.html'
 
 
 def index(request):
-    if request.user.is_authenticated:
+    if get_current_user(request):
         return redirect('dashboard')
-    return redirect('login')
+    return redirect('custom-login')
 
 
 def latest_readings(request):
+    def fetch_raw(alias):
+        try:
+            with connections[alias].cursor() as cur:
+                cur.execute(
+                    "SELECT sensor_id, humidity_pct, tilt, vibration, recorded_at FROM core_realtimereading"
+                )
+                cols = ['sensor_id', 'humidity_pct', 'tilt', 'vibration', 'recorded_at']
+                return [dict(zip(cols, r)) for r in cur.fetchall()]
+        except Exception:
+            return []
+
+    single = os.getenv('SINGLE_DB', 'false').lower() == 'true'
+    try_aliases = ['historical'] if single else ['historical', 'cache', 'default']
+
+    rows = []
+    for al in try_aliases:
+        rows = fetch_raw(al)
+        if rows:
+            break
+
+    if not rows:
+        return JsonResponse({'results': []})
+
+    sensor_ids = [r['sensor_id'] for r in rows]
+    sensors = {s.id: s for s in Sensor.objects.using('historical').filter(id__in=sensor_ids)}
     data = []
-    qs = RealtimeReading.objects.select_related('sensor').all()
-    for r in qs:
+    for r in rows:
+        s = sensors.get(r['sensor_id'])
+        code = s.code if s else ''
+        name = s.name if s else ''
         data.append({
-            'sensor': r.sensor.code,
-            'name': r.sensor.name,
-            'humidity_pct': r.humidity_pct,
-            'tilt': int(bool(r.tilt)),
-            'vibration': int(bool(r.vibration)),
-            'recorded_at': r.recorded_at.isoformat(),
+            'sensor': code,
+            'name': name,
+            'humidity_pct': float(r['humidity_pct']),
+            'tilt': int(r['tilt']),
+            'vibration': int(r['vibration']),
+            'recorded_at': str(r['recorded_at']),
         })
+
     return JsonResponse({'results': data})
 
 
@@ -140,3 +171,27 @@ def ingest(request):
 
     return JsonResponse({'status': 'ok'})
 
+
+class CustomLoginView(TemplateView):
+    template_name = 'core/custom_login.html'
+
+    def post(self, request, *args, **kwargs):
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+        next_url = request.GET.get('next') or '/dashboard/'
+
+        try:
+            user = AppUser.objects.using('historical').get(username=username, is_active=True)
+        except AppUser.DoesNotExist:
+            return self.render_to_response({'error': 'Usuario o contraseña incorrectos.'})
+
+        if not user.check_password(password):
+            return self.render_to_response({'error': 'Usuario o contraseña incorrectos.'})
+
+        login_user(request, user)
+        return redirect(next_url)
+
+
+def custom_logout(request):
+    logout_user(request)
+    return redirect('custom-login')

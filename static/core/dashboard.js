@@ -60,11 +60,36 @@ function updateCards(rows){
           <span class="kpi-label">Vibración</span>
           ${pill(r.vibration)}
         </div>
+        <div class="mini-charts">
+          <canvas class="mini-chart" id="chart-h-${r.sensor}"></canvas>
+          <canvas class="mini-chart binary" id="chart-t-${r.sensor}"></canvas>
+          <canvas class="mini-chart binary" id="chart-v-${r.sensor}"></canvas>
+        </div>
       </div>
       <div class="card-foot">${formatDate(r.recorded_at)}</div>
     `;
     grid.appendChild(card);
   });
+}
+
+function updateStatus(rows){
+  const pill = document.getElementById('status-pill');
+  const last = document.getElementById('last-updated');
+  if (!pill || !last) return;
+  if (!rows.length){
+    pill.className = 'badge ok';
+    pill.textContent = 'OK';
+    last.textContent = 'Sin datos';
+    return;
+  }
+  const anyWarn = rows.some(r => (r.humidity_pct < 10 || r.humidity_pct > 90) || r.tilt || r.vibration);
+  pill.className = `badge ${anyWarn ? 'warn' : 'ok'}`;
+  pill.textContent = anyWarn ? 'Alerta' : 'OK';
+  const latest = rows.reduce((acc, r) => {
+    const t = new Date(r.recorded_at).getTime();
+    return isNaN(t) ? acc : Math.max(acc, t);
+  }, 0);
+  last.textContent = latest ? `Última actualización: ${new Date(latest).toLocaleString()}` : 'Sin datos';
 }
 
 async function fetchLatest() {
@@ -75,6 +100,21 @@ async function fetchLatest() {
     const rows = data.results || [];
     updateCards(rows);
     updateTable(rows);
+    updateStatus(rows);
+    // fetch history for each sensor (last 3 hours)
+    const since = new Date(Date.now() - 3*60*60*1000).toISOString();
+    rows.forEach(async r => {
+      try{
+        const hr = await fetch(`/api/history/?sensor=${encodeURIComponent(r.sensor)}&from=${encodeURIComponent(since)}`);
+        if(!hr.ok) return; const h = await hr.json();
+        const hum = h.results.map(it=>({t: new Date(it.recorded_at).getTime(), v: it.humidity_pct})).reverse();
+        const tilt = h.results.map(it=>({t: new Date(it.recorded_at).getTime(), v: it.tilt})).reverse();
+        const vib = h.results.map(it=>({t: new Date(it.recorded_at).getTime(), v: it.vibration})).reverse();
+        IGPCharts.drawLineChart(document.getElementById(`chart-h-${r.sensor}`), hum, {color:'#0ea5e9'});
+        IGPCharts.drawBinaryChart(document.getElementById(`chart-t-${r.sensor}`), tilt, {color:'#f59e0b'});
+        IGPCharts.drawBinaryChart(document.getElementById(`chart-v-${r.sensor}`), vib, {color:'#ef4444'});
+      }catch(e){ /* ignore */ }
+    });
   } catch (e) { /* no-op */ }
 }
 

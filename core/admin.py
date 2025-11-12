@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Sensor, SensorReading, RealtimeReading
+from .models import Sensor, SensorReading, RealtimeReading, AppUser
 
 
 @admin.register(Sensor)
@@ -21,3 +21,8 @@ class RealtimeReadingAdmin(admin.ModelAdmin):
     list_display = ('sensor', 'humidity_pct', 'tilt', 'vibration', 'recorded_at')
     list_filter = ('tilt', 'vibration')
 
+
+@admin.register(AppUser)
+class AppUserAdmin(admin.ModelAdmin):
+    list_display = ('username', 'is_active', 'created_at')
+    search_fields = ('username',)
