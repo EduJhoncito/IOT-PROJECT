@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}Acceder al panel{% endblock %}
+{% block body_class %}login-layout{% endblock %}
+{% block content %}
+<section class="login-panel">
+    <div class="login-panel__copy">
+        <p class="eyebrow">IGP · Red de sensores</p>
+        <h1>Ingreso seguro</h1>
+        <p>Utiliza las credenciales provistas (admin / admin) para acceder al panel operativo.</p>
+    </div>
+    <form method="post" class="login-form">
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+            <div class="form-error">{{ form.non_field_errors.0 }}</div>
+        {% endif %}
+        <label>
+            <span>Usuario</span>
+            {{ form.username }}
+            {% if form.username.errors %}
+                <small class="input-error">{{ form.username.errors.0 }}</small>
+            {% endif %}
+        </label>
+        <label>
+            <span>Contraseña</span>
+            {{ form.password }}
+            {% if form.password.errors %}
+                <small class="input-error">{{ form.password.errors.0 }}</small>
+            {% endif %}
+        </label>
+        <button type="submit">Ingresar</button>
+    </form>
+</section>
+{% endblock %}

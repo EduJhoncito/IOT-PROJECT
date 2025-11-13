@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard IGP{% endblock %}
+{% block content %}
+<section class="hero-panel">
+    <div>
+        <p class="eyebrow">Monitoreo estratégico · IGP</p>
+        <h1>Panel operativo de sensores</h1>
+        <p class="hero-subtitle">
+            Datos históricos desde {{ historical_range.start|date:"F Y" }} hasta {{ historical_range.end|date:"d \d\e F Y" }}.
+        </p>
+    </div>
+    <div class="hero-status">
+        <p>Última lectura: <strong>{{ last_update }}</strong></p>
+        <p>Fuente del día: <strong>{{ daily_stats.source|default:"base de datos" }}</strong></p>
+    </div>
+</section>
+
+<section class="stat-grid">
+    {% for insight in daily_insights %}
+        <article class="stat-card">
+            <p class="stat-card__label">{{ insight.label }}</p>
+            <p class="stat-card__value">
+                {{ insight.value }}{% if insight.suffix %}<span>{{ insight.suffix }}</span>{% endif %}
+            </p>
+            <p class="stat-card__helper">{{ insight.helper }}</p>
+        </article>
+    {% empty %}
+        <p class="empty-state">No hay lecturas para el día de hoy.</p>
+    {% endfor %}
+</section>
+
+<section class="kpi-grid">
+    {% for kpi in kpi_cards %}
+        <article class="kpi-card">
+            <div>
+                <p class="kpi-label">{{ kpi.label }}</p>
+                <p class="kpi-value">
+                    {{ kpi.value }}{% if kpi.suffix %}<span>{{ kpi.suffix }}</span>{% endif %}
+                </p>
+            </div>
+            <p class="kpi-trend {{ kpi.trend_class }}">{{ kpi.trend_text }}</p>
+            <p class="kpi-helper">{{ kpi.helper }}</p>
+        </article>
+    {% empty %}
+        <p class="empty-state">Carga la data histórica para habilitar los KPI.</p>
+    {% endfor %}
+</section>
+
+<section class="storytelling">
+    <h2>Storytelling geofísico</h2>
+    <ul>
+        {% for item in storyline %}
+            <li>{{ item }}</li>
+        {% empty %}
+            <li>Aún no existen narrativas porque no hay registros.</li>
+        {% endfor %}
+    </ul>
+</section>
+
+<section class="chart-grid" id="dashboard-charts">
+    <article class="chart-card">
+        <div class="chart-card__header">
+            <h3>Promedio mensual de vibración (pulse)</h3>
+            <p>Promedio mostrado en unidades del sensor desde 2023.</p>
+        </div>
+        <canvas id="pulseChart"></canvas>
+    </article>
+    <article class="chart-card">
+        <div class="chart-card__header">
+            <h3>Tendencia de humedad calibrada</h3>
+            <p>Señal suavizada con media móvil de 3 meses.</p>
+        </div>
+        <canvas id="humidityChart"></canvas>
+    </article>
+    <article class="chart-card event-card">
+        <div class="chart-card__header">
+            <h3>Eventos críticos</h3>
+            <p>Proporción acumulada por tipo de alerta.</p>
+        </div>
+        <div class="event-list">
+            {% for event in event_breakdown %}
+                <div class="event-row">
+                    <div>
+                        <p>{{ event.label }}</p>
+                        <small>{{ event.value }} eventos</small>
+                    </div>
+                    <div class="event-progress">
+                        <span style="width: {{ event.percent }}%"></span>
+                    </div>
+                    <p class="event-percent">{{ event.percent }}%</p>
+                </div>
+            {% empty %}
+                <p class="empty-state">No se registran eventos para graficar.</p>
+            {% endfor %}
+        </div>
+    </article>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    window.dashboardData = JSON.parse('{{ chart_data|escapejs }}');
+</script>
+{% endblock %}

@@ -1,0 +1,141 @@
+(function () {
+    const DPR = window.devicePixelRatio || 1;
+
+    function setupCanvas(canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const ctx = canvas.getContext('2d');
+        canvas.width = rect.width * DPR;
+        canvas.height = rect.height * DPR;
+        ctx.scale(DPR, DPR);
+        return { ctx, width: rect.width, height: rect.height };
+    }
+
+    function drawEmptyState(ctx, width, height, message) {
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.font = '16px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(message, width / 2, height / 2);
+    }
+
+    function renderBarChart(id, dataset) {
+        const canvas = document.getElementById(id);
+        if (!canvas) return;
+        const { ctx, width, height } = setupCanvas(canvas);
+        if (!dataset || !dataset.length) {
+            drawEmptyState(ctx, width, height, 'Aún no hay datos históricos.');
+            return;
+        }
+        ctx.clearRect(0, 0, width, height);
+        const padding = 32;
+        const chartWidth = width - padding * 2;
+        const chartHeight = height - padding * 2;
+        const step = chartWidth / dataset.length;
+        const maxValue = Math.max(...dataset.map(d => d.avgPulse), 1);
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ctx.beginPath();
+        ctx.moveTo(padding, height - padding);
+        ctx.lineTo(width - padding, height - padding);
+        ctx.stroke();
+
+        dataset.forEach((point, index) => {
+            const barHeight = (point.avgPulse / maxValue) * chartHeight;
+            const x = padding + index * step + step * 0.2;
+            const y = height - padding - barHeight;
+            const barWidth = step * 0.6;
+            const gradient = ctx.createLinearGradient(0, y, 0, height - padding);
+            gradient.addColorStop(0, '#00d7c1');
+            gradient.addColorStop(1, '#007bff');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(x, y, barWidth, barHeight);
+
+            const labelFrequency = Math.max(1, Math.ceil(dataset.length / 6));
+            if (index % labelFrequency === 0) {
+                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                ctx.font = '12px "Inter", sans-serif';
+                ctx.save();
+                ctx.translate(x + barWidth / 2, height - padding + 16);
+                ctx.rotate(-Math.PI / 6);
+                ctx.fillText(point.label, 0, 0);
+                ctx.restore();
+            }
+        });
+    }
+
+    function movingAverage(values, windowSize) {
+        if (values.length < windowSize) return values;
+        return values.map((_, idx, arr) => {
+            const start = Math.max(0, idx - windowSize + 1);
+            const subset = arr.slice(start, idx + 1);
+            const avg = subset.reduce((acc, val) => acc + val, 0) / subset.length;
+            return Number(avg.toFixed(2));
+        });
+    }
+
+    function renderLineChart(id, dataset) {
+        const canvas = document.getElementById(id);
+        if (!canvas) return;
+        const { ctx, width, height } = setupCanvas(canvas);
+        if (!dataset || !dataset.length) {
+            drawEmptyState(ctx, width, height, 'Carga registros para ver la tendencia.');
+            return;
+        }
+
+        const padding = 32;
+        const chartWidth = width - padding * 2;
+        const chartHeight = height - padding * 2;
+        const values = dataset.map(point => point.value);
+        const smoothed = movingAverage(values, 3);
+        const maxValue = Math.max(...smoothed, 1);
+        const minValue = Math.min(...smoothed, 0);
+        const valueRange = maxValue - minValue || 1;
+
+        ctx.clearRect(0, 0, width, height);
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.setLineDash([4, 8]);
+        ctx.beginPath();
+        ctx.moveTo(padding, height - padding);
+        ctx.lineTo(width - padding, height - padding);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.beginPath();
+        smoothed.forEach((value, index) => {
+            const x = padding + (chartWidth / (smoothed.length - 1 || 1)) * index;
+            const y = padding + chartHeight - ((value - minValue) / valueRange) * chartHeight;
+            if (index === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+        const gradient = ctx.createLinearGradient(0, padding, 0, height - padding);
+        gradient.addColorStop(0, '#ffb347');
+        gradient.addColorStop(1, '#ffd56f');
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        smoothed.forEach((value, index) => {
+            const x = padding + (chartWidth / (smoothed.length - 1 || 1)) * index;
+            const y = padding + chartHeight - ((value - minValue) / valueRange) * chartHeight;
+            ctx.fillStyle = '#ffb347';
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, Math.PI * 2);
+            ctx.fill();
+            const labelFrequency = Math.max(1, Math.ceil(dataset.length / 4));
+            if (index % labelFrequency === 0 || index === smoothed.length - 1) {
+                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                ctx.font = '12px "Inter", sans-serif';
+                ctx.fillText(dataset[index].label, x - 20, height - 4);
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const data = window.dashboardData || {};
+        renderBarChart('pulseChart', data.monthlyPulse || []);
+        renderLineChart('humidityChart', data.humidityTrend || []);
+    });
+})();

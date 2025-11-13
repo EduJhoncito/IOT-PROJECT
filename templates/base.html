@@ -1,0 +1,37 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}IGP Data Platform{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/base.css' %}">
+    <link rel="icon" href="data:,">
+    {% block head_extra %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    <header class="site-header">
+        <div class="logo-block">
+            <div class="logo-dot"></div>
+            <div>
+                <p class="logo-eyebrow">Instituto Geofísico del Perú</p>
+                <p class="logo-title">Observatorio de sensores</p>
+            </div>
+        </div>
+        {% if user.is_authenticated %}
+            <nav>
+                <a class="nav-link" href="{% url 'monitoring:dashboard' %}">Dashboard</a>
+                <form action="{% url 'logout' %}" method="post">
+                    {% csrf_token %}
+                    <button class="ghost-button" type="submit">Cerrar sesión</button>
+                </form>
+            </nav>
+        {% endif %}
+    </header>
+    <main class="site-main">
+        {% block content %}{% endblock %}
+    </main>
+    <script src="{% static 'js/dashboard.js' %}" defer></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
