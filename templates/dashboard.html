@@ -5,13 +5,107 @@
     <div>
         <p class="eyebrow">Monitoreo estratégico · IGP</p>
         <h1>Panel operativo de sensores</h1>
-        <p class="hero-subtitle">
-            Datos históricos desde {{ historical_range.start|date:"F Y" }} hasta {{ historical_range.end|date:"d \d\e F Y" }}.
-        </p>
+        <p class="hero-subtitle">{{ filter_description }}</p>
     </div>
     <div class="hero-status">
         <p>Última lectura: <strong>{{ last_update }}</strong></p>
         <p>Fuente del día: <strong>{{ daily_stats.source|default:"base de datos" }}</strong></p>
+    </div>
+</section>
+
+<form method="get" class="filter-bar">
+    <label>
+        <span>Año</span>
+        <select name="year">
+            <option value="">Todos</option>
+            {% for option in filter_options.years %}
+                <option value="{{ option.value }}" {% if active_filters.year == option.value %}selected{% endif %}>
+                    {{ option.label }}
+                </option>
+            {% endfor %}
+        </select>
+    </label>
+    <label>
+        <span>Mes</span>
+        <select name="month" {% if not filter_options.months %}disabled{% endif %}>
+            <option value="">Todos</option>
+            {% for option in filter_options.months %}
+                <option value="{{ option.value }}" {% if active_filters.month == option.value %}selected{% endif %}>
+                    {{ option.label|title }}
+                </option>
+            {% endfor %}
+        </select>
+        {% if not filter_options.months %}
+            <small>Selecciona un año para habilitar</small>
+        {% endif %}
+    </label>
+    <label>
+        <span>Día</span>
+        <select name="day" {% if not filter_options.days %}disabled{% endif %}>
+            <option value="">Todos</option>
+            {% for option in filter_options.days %}
+                <option value="{{ option.value }}" {% if active_filters.day == option.value %}selected{% endif %}>
+                    {{ option.label }}
+                </option>
+            {% endfor %}
+        </select>
+        {% if not filter_options.days %}
+            <small>Selecciona año y mes</small>
+        {% endif %}
+    </label>
+    <div class="filter-actions">
+        <button type="submit">Aplicar filtros</button>
+        {% if filters_applied %}
+            <a class="ghost-button ghost-button--small" href="{{ filter_reset_url }}">Limpiar</a>
+        {% endif %}
+    </div>
+</form>
+
+<section class="realtime-panel">
+    <div class="panel-header">
+        <div>
+            <p class="eyebrow">Simulación · SSE</p>
+            <h2>Tiempo real</h2>
+            <p class="hero-subtitle">Generación de paquetes cada 5 segundos mientras se integra Redis.</p>
+        </div>
+        <div class="live-status">
+            <span>Estado stream:</span>
+            <span class="status-pill" id="live-status">Conectando…</span>
+        </div>
+    </div>
+    <div class="live-metrics">
+        <article class="live-metric-card">
+            <p class="live-metric__label">Registros del día</p>
+            <p class="live-metric__value" id="live-total">0</p>
+            <p class="live-metric__helper">Samples recibidos</p>
+        </article>
+        <article class="live-metric-card">
+            <p class="live-metric__label">Humedad promedio</p>
+            <p class="live-metric__value" id="live-humidity"><span class="value">0.0</span><span class="unit">%</span></p>
+            <p class="live-metric__helper">Basado en streaming</p>
+        </article>
+        <article class="live-metric-card">
+            <p class="live-metric__label">Alertas por inclinación</p>
+            <p class="live-metric__value" id="live-tilt">0</p>
+            <p class="live-metric__helper">Eventos del día</p>
+        </article>
+        <article class="live-metric-card">
+            <p class="live-metric__label">Golpes detectados</p>
+            <p class="live-metric__value" id="live-hit">0</p>
+            <p class="live-metric__helper">Impactos críticos</p>
+        </article>
+        <article class="live-metric-card">
+            <p class="live-metric__label">Último timestamp</p>
+            <p class="live-metric__value" id="live-last-ts">--</p>
+            <p class="live-metric__helper">Seq <span id="live-last-seq">--</span></p>
+        </article>
+    </div>
+    <div class="live-feed">
+        <div class="chart-card__header">
+            <h3>Payload recibido</h3>
+            <p>JSON simulado respetando el formato del hardware.</p>
+        </div>
+        <pre id="live-json">Esperando datos…</pre>
     </div>
 </section>
 
@@ -61,7 +155,7 @@
     <article class="chart-card">
         <div class="chart-card__header">
             <h3>Promedio mensual de vibración (pulse)</h3>
-            <p>Promedio mostrado en unidades del sensor desde 2023.</p>
+            <p>Promedio mostrado en unidades del sensor.</p>
         </div>
         <canvas id="pulseChart"></canvas>
     </article>
@@ -100,5 +194,6 @@
 {% block extra_js %}
 <script>
     window.dashboardData = JSON.parse('{{ chart_data|escapejs }}');
+    window.streamEndpoint = "{% url 'monitoring:sensor-stream' %}";
 </script>
 {% endblock %}

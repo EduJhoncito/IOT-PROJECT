@@ -9,9 +9,10 @@ Aplicación web para el Instituto Geofísico del Perú (IGP) que centraliza lect
   - **Datos del día** listos para Redis (hoy se calculan desde la base relacional y se cachearán al conectar Redis).
   - **Histórico 2023–hoy** con KPIs, gráficos (barras y líneas) y narrativa descriptiva.
 - **Base de datos**: `sqlite3` en desarrollo y PostgreSQL en producción (`DATABASE_URL`).
-- **Modelado de sensores** conforme a la especificación (`pulse`, `hit`, `inclination`, `humidity_percent`, `humidity_raw`).
+- **Modelado de sensores**: `SensorPacket` agrupa `seq/ts/alerta` y `SensorSample` almacena cada muestra (`soil_raw/pct`, `tilt`, `vib_pulse/hit`).
 - **Frontend** 100% HTML + CSS + JavaScript puro, estilo moderno y responsivo.
 - **Datos simulados** generados con un comando (`seed_sensor_data`).
+- **Filtros & streaming**: filtros por año/mes/día para la data histórica y sección de streaming (SSE) que simula paquetes cada 5 s antes de conectar Redis.
 
 ## Requisitos locales
 
@@ -26,7 +27,7 @@ py -3 -m venv .venv
 pip install -r requirements.txt
 py -3 manage.py migrate
 py -3 manage.py ensure_admin_user
-py -3 manage.py seed_sensor_data --per-day 8
+py -3 manage.py seed_sensor_data --per-day 8 --samples 2
 py -3 manage.py runserver
 ```
 
@@ -35,7 +36,7 @@ py -3 manage.py runserver
 ## Comandos útiles
 
 - `manage.py ensure_admin_user`: garantiza que exista el usuario `admin` con la contraseña solicitada.
-- `manage.py seed_sensor_data --per-day 12`: genera lecturas desde 2023 con el volumen deseado (usar `--force` para regenerar).
+- `manage.py seed_sensor_data --per-day 12 --samples 2`: genera paquetes desde 2023 con la cantidad de samples deseada (usar `--force` para regenerar).
 
 ## Variables de entorno
 
@@ -52,6 +53,8 @@ Consultar `.env.example`. Las principales son:
 ## Redis (futuro)
 
 La clase `monitoring.services.redis_gateway.DailyStatsGateway` centraliza la lectura/escritura de métricas diarias. Al definir `REDIS_URL`, las estadísticas del día se recuperarán y almacenarán en Redis sin cambios adicionales en las vistas.
+
+Mientras tanto, el endpoint `GET /stream/` expone un flujo SSE que genera JSON nuevos cada 5 s y alimenta la sección de “Tiempo real” del dashboard.
 
 ## Despliegue en Render
 

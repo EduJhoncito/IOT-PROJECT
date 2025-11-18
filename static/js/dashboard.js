@@ -133,9 +133,113 @@
         });
     }
 
+    const liveState = {
+        totalSamples: 0,
+        humiditySum: 0,
+        tiltEvents: 0,
+        hitEvents: 0,
+        currentDay: null,
+        lastTimestamp: '--',
+        lastSeq: '--',
+    };
+
+    function initRealtimeStream() {
+        const endpoint = window.streamEndpoint;
+        const statusEl = document.getElementById('live-status');
+        if (!endpoint || !statusEl || typeof EventSource === 'undefined') {
+            if (statusEl) {
+                statusEl.textContent = 'No soportado';
+                statusEl.classList.add('is-error');
+            }
+            return;
+        }
+        const source = new EventSource(endpoint);
+        setStatus(statusEl, 'Conectando…', 'connecting');
+
+        source.onopen = () => setStatus(statusEl, 'Conectado', 'ok');
+        source.onerror = () => setStatus(statusEl, 'Reintentando…', 'error');
+        source.onmessage = (event) => {
+            try {
+                const payload = JSON.parse(event.data);
+                handleLivePayload(payload);
+            } catch (err) {
+                console.error('Error procesando el stream', err);
+                setStatus(statusEl, 'Error de datos', 'error');
+            }
+        };
+    }
+
+    function setStatus(el, text, status) {
+        el.textContent = text;
+        el.classList.remove('is-ok', 'is-error', 'is-connecting');
+        if (status === 'ok') {
+            el.classList.add('is-ok');
+        } else if (status === 'error') {
+            el.classList.add('is-error');
+        } else {
+            el.classList.add('is-connecting');
+        }
+    }
+
+    function handleLivePayload(payload) {
+        if (!payload || !Array.isArray(payload.samples)) {
+            return;
+        }
+        const day = (payload.ts || '').split(' ')[0];
+        if (liveState.currentDay !== day) {
+            resetDailyCounters(day);
+        }
+        const sampleCount = payload.samples.length;
+        const humiditySum = payload.samples.reduce((acc, sample) => acc + Number(sample?.soil?.pct || 0), 0);
+        const tiltCount = payload.samples.filter(sample => Number(sample?.tilt || 0)).length;
+        const hitCount = payload.samples.filter(sample => Number(sample?.vib?.hit || 0)).length;
+
+        liveState.totalSamples += sampleCount;
+        liveState.humiditySum += humiditySum;
+        liveState.tiltEvents += tiltCount;
+        liveState.hitEvents += hitCount;
+        liveState.lastTimestamp = payload.ts;
+        liveState.lastSeq = payload.seq;
+
+        renderLiveMetrics(payload);
+    }
+
+    function resetDailyCounters(day) {
+        liveState.currentDay = day;
+        liveState.totalSamples = 0;
+        liveState.humiditySum = 0;
+        liveState.tiltEvents = 0;
+        liveState.hitEvents = 0;
+    }
+
+    function renderLiveMetrics(payload) {
+        const totalEl = document.getElementById('live-total');
+        const humidityEl = document.getElementById('live-humidity');
+        const tiltEl = document.getElementById('live-tilt');
+        const hitEl = document.getElementById('live-hit');
+        const lastTsEl = document.getElementById('live-last-ts');
+        const lastSeqEl = document.getElementById('live-last-seq');
+        const jsonEl = document.getElementById('live-json');
+
+        if (totalEl) totalEl.textContent = liveState.totalSamples.toString();
+        if (humidityEl) {
+            const valueSpan = humidityEl.querySelector('.value');
+            if (valueSpan) {
+                const avg = liveState.totalSamples ? (liveState.humiditySum / liveState.totalSamples).toFixed(1) : '0.0';
+                valueSpan.textContent = avg;
+            }
+        }
+        if (tiltEl) tiltEl.textContent = liveState.tiltEvents.toString();
+        if (hitEl) hitEl.textContent = liveState.hitEvents.toString();
+        if (lastTsEl) lastTsEl.textContent = liveState.lastTimestamp || '--';
+        if (lastSeqEl) lastSeqEl.textContent = liveState.lastSeq || '--';
+        if (jsonEl) jsonEl.textContent = JSON.stringify(payload, null, 2);
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         const data = window.dashboardData || {};
         renderBarChart('pulseChart', data.monthlyPulse || []);
         renderLineChart('humidityChart', data.humidityTrend || []);
+        initRealtimeStream();
     });
 })();

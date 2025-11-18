@@ -6,7 +6,7 @@ from django.conf import settings
 from django.db.models import Avg, Count, Max, Min, Q
 from django.utils import timezone
 
-from monitoring.models import SensorReading
+from monitoring.models import SensorSample
 
 try:
     import redis  # type: ignore
@@ -62,15 +62,15 @@ class DailyStatsGateway:
             pass
 
     def _compute_from_database(self, target_date) -> Dict[str, float]:
-        readings = SensorReading.objects.filter(timestamp__date=target_date)
+        readings = SensorSample.objects.filter(packet__timestamp__date=target_date)
         aggregates = readings.aggregate(
-            pulse_avg=Avg('pulse'),
-            pulse_peak=Max('pulse'),
-            humidity_avg=Avg('humidity_percent'),
-            humidity_peak=Max('humidity_percent'),
-            humidity_floor=Min('humidity_percent'),
-            hit_events=Count('id', filter=Q(hit=True)),
-            inclination_events=Count('id', filter=Q(inclination=True)),
+            pulse_avg=Avg('vib_pulse'),
+            pulse_peak=Max('vib_pulse'),
+            humidity_avg=Avg('soil_pct'),
+            humidity_peak=Max('soil_pct'),
+            humidity_floor=Min('soil_pct'),
+            hit_events=Count('id', filter=Q(vib_hit=True)),
+            inclination_events=Count('id', filter=Q(tilt=True)),
         )
         snapshot = {
             'pulse_avg': round(aggregates.get('pulse_avg') or 0, 2),

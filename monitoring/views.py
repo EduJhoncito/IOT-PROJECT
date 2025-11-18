@@ -1,15 +1,35 @@
+import itertools
 import json
+import random
+import time
 from datetime import date, timedelta
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Avg, Count, Max, Min, Q
 from django.db.models.functions import TruncMonth
+from django.http import StreamingHttpResponse
 from django.utils import timezone
+from django.views import View
 from django.views.generic import TemplateView
 
-from .models import SensorReading
+from .models import SensorSample
 from .services.redis_gateway import DailyStatsGateway
+
+MONTH_NAMES = {
+    1: "enero",
+    2: "febrero",
+    3: "marzo",
+    4: "abril",
+    5: "mayo",
+    6: "junio",
+    7: "julio",
+    8: "agosto",
+    9: "setiembre",
+    10: "octubre",
+    11: "noviembre",
+    12: "diciembre",
+}
 
 
 class DashboardView(LoginRequiredMixin, TemplateView):
@@ -18,7 +38,10 @@ class DashboardView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        historical_qs = SensorReading.objects.filter(timestamp__date__gte=date(2023, 1, 1))
+        base_qs = SensorSample.objects.select_related('packet').filter(packet__timestamp__date__gte=date(2023, 1, 1))
+        filters = self._extract_filters()
+        historical_qs = self._apply_time_filters(base_qs, filters)
+        range_meta = self._range_metadata(historical_qs)
         global_stats = self._global_aggregates(historical_qs)
         trend_windows = self._trend_windows(historical_qs)
         daily_stats = self.gateway_class().get_today_snapshot()
@@ -29,14 +52,84 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             'kpi_cards': self._build_kpis(global_stats, trend_windows),
             'storyline': self._build_storyline(global_stats),
             'chart_data': json.dumps(self._build_chart_payload(historical_qs), cls=DjangoJSONEncoder),
-            'historical_range': {
-                'start': date(2023, 1, 1),
-                'end': timezone.localdate(),
-            },
+            'historical_range': range_meta,
             'last_update': self._last_measurement(global_stats),
             'event_breakdown': self._event_breakdown(global_stats),
+            'active_filters': filters,
+            'filter_options': self._filter_options(filters),
+            'filters_applied': any(filters.values()),
+            'filter_description': self._filter_description(filters, range_meta),
+            'filter_reset_url': self.request.path,
         })
         return context
+
+    def _extract_filters(self):
+        return {
+            'year': self._safe_int(self.request.GET.get('year'), minimum=2000, maximum=2100),
+            'month': self._safe_int(self.request.GET.get('month'), minimum=1, maximum=12),
+            'day': self._safe_int(self.request.GET.get('day'), minimum=1, maximum=31),
+        }
+
+    def _safe_int(self, value, *, minimum, maximum):
+        if value in (None, ''):
+            return None
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return None
+        if parsed < minimum or parsed > maximum:
+            return None
+        return parsed
+
+    def _apply_time_filters(self, qs, filters):
+        if filters['year']:
+            qs = qs.filter(packet__timestamp__year=filters['year'])
+        if filters['month']:
+            qs = qs.filter(packet__timestamp__month=filters['month'])
+        if filters['day']:
+            qs = qs.filter(packet__timestamp__day=filters['day'])
+        return qs
+
+    def _filter_options(self, filters):
+        qs = SensorSample.objects.select_related('packet')
+        years = qs.order_by().dates('packet__timestamp', 'year')
+        months = []
+        days = []
+        if filters['year']:
+            months_qs = qs.filter(packet__timestamp__year=filters['year'])
+            months = months_qs.order_by().dates('packet__timestamp', 'month')
+            if filters['month']:
+                days_qs = months_qs.filter(packet__timestamp__month=filters['month'])
+                days = days_qs.order_by().dates('packet__timestamp', 'day')
+
+        return {
+            'years': [{'value': y.year, 'label': y.year} for y in years],
+            'months': [{'value': m.month, 'label': MONTH_NAMES.get(m.month, m.strftime('%B'))} for m in months],
+            'days': [{'value': d.day, 'label': f"{d.day:02d}"} for d in days],
+        }
+
+    def _range_metadata(self, qs):
+        bounds = qs.aggregate(
+            start=Min('packet__timestamp'),
+            end=Max('packet__timestamp'),
+        )
+        return {
+            'start': (bounds['start'].date() if bounds['start'] else date(2023, 1, 1)),
+            'end': (bounds['end'].date() if bounds['end'] else timezone.localdate()),
+        }
+
+    def _filter_description(self, filters, range_meta):
+        if not any(filters.values()):
+            return f"Histórico completo ({range_meta['start']:%b %Y} - {range_meta['end']:%d %b %Y})"
+
+        parts = []
+        if filters['year']:
+            parts.append(str(filters['year']))
+        if filters['month']:
+            parts.append(MONTH_NAMES.get(filters['month'], f"Mes {filters['month']}"))
+        if filters['day']:
+            parts.append(f"Día {filters['day']:02d}")
+        return " · ".join(parts)
 
     def _format_daily_insights(self, stats):
         total = stats.get('total_readings', 0)
@@ -72,15 +165,15 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             return None
         aggregates = qs.aggregate(
             total_readings=Count('id'),
-            avg_pulse=Avg('pulse'),
-            avg_humidity=Avg('humidity_percent'),
-            hit_events=Count('id', filter=Q(hit=True)),
-            inclination_events=Count('id', filter=Q(inclination=True)),
-            humidity_peak=Max('humidity_percent'),
-            humidity_floor=Min('humidity_percent'),
-            pulse_peak=Max('pulse'),
-            first_timestamp=Min('timestamp'),
-            last_timestamp=Max('timestamp'),
+            avg_pulse=Avg('vib_pulse'),
+            avg_humidity=Avg('soil_pct'),
+            hit_events=Count('id', filter=Q(vib_hit=True)),
+            inclination_events=Count('id', filter=Q(tilt=True)),
+            humidity_peak=Max('soil_pct'),
+            humidity_floor=Min('soil_pct'),
+            pulse_peak=Max('vib_pulse'),
+            first_timestamp=Min('packet__timestamp'),
+            last_timestamp=Max('packet__timestamp'),
         )
         return aggregates
 
@@ -88,23 +181,23 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         today = timezone.localdate()
         recent_start = today - timedelta(days=30)
         previous_start = recent_start - timedelta(days=30)
-        recent = qs.filter(timestamp__date__gte=recent_start)
+        recent = qs.filter(packet__timestamp__date__gte=recent_start)
         previous = qs.filter(
-            timestamp__date__gte=previous_start,
-            timestamp__date__lt=recent_start,
+            packet__timestamp__date__gte=previous_start,
+            packet__timestamp__date__lt=recent_start,
         )
         return {
             'recent': recent.aggregate(
                 total_readings=Count('id'),
-                hit_events=Count('id', filter=Q(hit=True)),
-                inclination_events=Count('id', filter=Q(inclination=True)),
-                avg_humidity=Avg('humidity_percent'),
+                hit_events=Count('id', filter=Q(vib_hit=True)),
+                inclination_events=Count('id', filter=Q(tilt=True)),
+                avg_humidity=Avg('soil_pct'),
             ),
             'previous': previous.aggregate(
                 total_readings=Count('id'),
-                hit_events=Count('id', filter=Q(hit=True)),
-                inclination_events=Count('id', filter=Q(inclination=True)),
-                avg_humidity=Avg('humidity_percent'),
+                hit_events=Count('id', filter=Q(vib_hit=True)),
+                inclination_events=Count('id', filter=Q(tilt=True)),
+                avg_humidity=Avg('soil_pct'),
             ),
         }
 
@@ -200,11 +293,11 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         if not qs.exists():
             return {'monthlyPulse': [], 'humidityTrend': []}
         monthly = (
-            qs.annotate(month=TruncMonth('timestamp'))
+            qs.annotate(month=TruncMonth('packet__timestamp'))
             .values('month')
             .annotate(
-                avg_pulse=Avg('pulse'),
-                avg_humidity=Avg('humidity_percent'),
+                avg_pulse=Avg('vib_pulse'),
+                avg_humidity=Avg('soil_pct'),
             )
             .order_by('month')
         )
@@ -244,3 +337,53 @@ class DashboardView(LoginRequiredMixin, TemplateView):
 
     def _format_number(self, value):
         return f"{int(value):,}".replace(',', '.') if value is not None else '0'
+
+
+class SensorStreamView(LoginRequiredMixin, View):
+    stream_interval_seconds = 5
+
+    def get(self, request, *args, **kwargs):
+        response = StreamingHttpResponse(
+            self._event_stream(),
+            content_type='text/event-stream',
+        )
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
+        return response
+
+    def _event_stream(self):
+        rng = random.Random()
+        seq_counter = itertools.count(start=int(timezone.now().timestamp()))
+        try:
+            while True:
+                payload = self._build_payload(next(seq_counter), rng)
+                yield f"data: {json.dumps(payload, cls=DjangoJSONEncoder)}\n\n"
+                time.sleep(self.stream_interval_seconds)
+        except GeneratorExit:
+            return
+
+    def _build_payload(self, seq, rng):
+        timestamp = timezone.localtime()
+        sample_count = rng.randint(2, 4)
+        samples = []
+        for sensor_id in range(1, sample_count + 1):
+            soil_raw = rng.randint(250, 940)
+            soil_pct = round(min(100, max(0, (soil_raw / 1024) * 100 + rng.uniform(-2, 2))), 2)
+            tilt = 1 if rng.random() > 0.78 else 0
+            vib_hit = 1 if rng.random() > 0.7 else 0
+            samples.append({
+                'id': sensor_id,
+                'soil': {'raw': soil_raw, 'pct': soil_pct},
+                'tilt': tilt,
+                'vib': {
+                    'pulse': rng.randint(60, 1500),
+                    'hit': vib_hit,
+                },
+            })
+        payload = {
+            'seq': seq,
+            'alerta': 1 if any(sample['tilt'] or sample['vib']['hit'] for sample in samples) else 0,
+            'ts': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'samples': samples,
+        }
+        return payload
