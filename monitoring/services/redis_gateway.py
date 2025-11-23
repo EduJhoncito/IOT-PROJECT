@@ -24,18 +24,29 @@ class DailyStatsGateway:
     def __init__(self):
         self.client = None
         if getattr(settings, 'REDIS_URL', None) and redis is not None:
-            self.client = redis.Redis.from_url(
-                settings.REDIS_URL,
-                decode_responses=True,
-                socket_timeout=1,
-            )
+            try:
+                self.client = redis.Redis.from_url(
+                    settings.REDIS_URL,
+                    decode_responses=True,
+                    socket_timeout=1,
+                )
+                # Ping para validar conexión cuando se exige Redis
+                if settings.REQUIRE_REDIS:
+                    self.client.ping()
+            except Exception:
+                self.client = None
 
     def get_today_snapshot(self) -> Dict[str, float]:
         target_date = timezone.localdate()
-        cached = self._read_from_cache(target_date)
-        if cached:
-            cached['source'] = 'redis'
-            return cached
+        if self.client:
+            cached = self._read_from_cache(target_date)
+            if cached:
+                cached['source'] = 'redis'
+                return cached
+
+        if settings.REQUIRE_REDIS and not self.client:
+            # Si se exige Redis, no hacemos fallback silencioso.
+            return {'source': 'redis-off', 'total_readings': 0}
 
         snapshot = self._compute_from_database(target_date)
         self._write_to_cache(target_date, snapshot)

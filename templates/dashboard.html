@@ -28,7 +28,7 @@
     </label>
     <label>
         <span>Mes</span>
-        <select name="month" {% if not filter_options.months %}disabled{% endif %}>
+        <select name="month">
             <option value="">Todos</option>
             {% for option in filter_options.months %}
                 <option value="{{ option.value }}" {% if active_filters.month == option.value %}selected{% endif %}>
@@ -36,13 +36,11 @@
                 </option>
             {% endfor %}
         </select>
-        {% if not filter_options.months %}
-            <small>Selecciona un año para habilitar</small>
-        {% endif %}
+        <small>Filtra también por mes</small>
     </label>
     <label>
         <span>Día</span>
-        <select name="day" {% if not filter_options.days %}disabled{% endif %}>
+        <select name="day">
             <option value="">Todos</option>
             {% for option in filter_options.days %}
                 <option value="{{ option.value }}" {% if active_filters.day == option.value %}selected{% endif %}>
@@ -50,9 +48,7 @@
                 </option>
             {% endfor %}
         </select>
-        {% if not filter_options.days %}
-            <small>Selecciona año y mes</small>
-        {% endif %}
+        <small>Opcional: día específico</small>
     </label>
     <div class="filter-actions">
         <button type="submit">Aplicar filtros</button>
@@ -196,5 +192,6 @@
 <script>
     window.dashboardData = JSON.parse('{{ chart_data|escapejs }}');
     window.streamEndpoint = "{% url 'monitoring:sensor-stream' %}";
+    window.simStreamEnabled = {{ sim_stream_enabled|yesno:"true,false" }};
 </script>
 {% endblock %}

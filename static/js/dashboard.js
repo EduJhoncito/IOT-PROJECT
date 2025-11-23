@@ -146,6 +146,12 @@
     function initRealtimeStream() {
         const endpoint = window.streamEndpoint;
         const statusEl = document.getElementById('live-status');
+        if (!window.simStreamEnabled) {
+            if (statusEl) {
+                setStatus(statusEl, 'Simulación deshabilitada', 'error');
+            }
+            return;
+        }
         if (!endpoint || !statusEl || typeof EventSource === 'undefined') {
             if (statusEl) {
                 statusEl.textContent = 'No soportado';

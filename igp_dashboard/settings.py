@@ -169,3 +169,5 @@ LOGIN_REDIRECT_URL = 'monitoring:dashboard'
 LOGOUT_REDIRECT_URL = 'login'
 
 REDIS_URL = os.getenv('REDIS_URL')
+REQUIRE_REDIS = os.getenv('REQUIRE_REDIS', '0') == '1'
+SIM_STREAM_ENABLED = os.getenv('SIM_STREAM', '1') == '1'

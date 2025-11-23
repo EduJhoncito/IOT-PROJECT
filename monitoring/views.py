@@ -13,6 +13,7 @@ from django.utils import timezone
 from django.views import View
 from django.views.generic import TemplateView
 
+from django.conf import settings
 from .models import SensorSample
 from .services.redis_gateway import DailyStatsGateway
 
@@ -60,6 +61,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             'filters_applied': any(filters.values()),
             'filter_description': self._filter_description(filters, range_meta),
             'filter_reset_url': self.request.path,
+            'sim_stream_enabled': settings.SIM_STREAM_ENABLED,
         })
         return context
 
@@ -91,21 +93,16 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         return qs
 
     def _filter_options(self, filters):
-        qs = SensorSample.objects.select_related('packet')
-        years = qs.order_by().dates('packet__timestamp', 'year')
-        months = []
-        days = []
-        if filters['year']:
-            months_qs = qs.filter(packet__timestamp__year=filters['year'])
-            months = months_qs.order_by().dates('packet__timestamp', 'month')
-            if filters['month']:
-                days_qs = months_qs.filter(packet__timestamp__month=filters['month'])
-                days = days_qs.order_by().dates('packet__timestamp', 'day')
+        current_year = timezone.localdate().year
+        years = [{'value': y, 'label': y} for y in range(2023, current_year + 1)]
+
+        months = [{'value': m, 'label': MONTH_NAMES.get(m, f"Mes {m}")} for m in range(1, 13)]
+        days = [{'value': d, 'label': f"{d:02d}"} for d in range(1, 32)]
 
         return {
-            'years': [{'value': y.year, 'label': y.year} for y in years],
-            'months': [{'value': m.month, 'label': MONTH_NAMES.get(m.month, m.strftime('%B'))} for m in months],
-            'days': [{'value': d.day, 'label': f"{d.day:02d}"} for d in days],
+            'years': years,
+            'months': months,
+            'days': days,
         }
 
     def _range_metadata(self, qs):
@@ -343,6 +340,11 @@ class SensorStreamView(LoginRequiredMixin, View):
     stream_interval_seconds = 5
 
     def get(self, request, *args, **kwargs):
+        if not settings.SIM_STREAM_ENABLED:
+            return StreamingHttpResponse(
+                "data: {\"message\": \"Simulación deshabilitada\"}\n\n",
+                content_type='text/event-stream',
+            )
         response = StreamingHttpResponse(
             self._event_stream(),
             content_type='text/event-stream',
