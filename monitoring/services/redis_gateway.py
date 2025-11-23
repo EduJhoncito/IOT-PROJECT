@@ -28,7 +28,8 @@ class DailyStatsGateway:
                 self.client = redis.Redis.from_url(
                     settings.REDIS_URL,
                     decode_responses=True,
-                    socket_timeout=1,
+                    socket_timeout=0.5,
+                    socket_connect_timeout=0.5,
                 )
                 # Ping para validar conexión cuando se exige Redis
                 if settings.REQUIRE_REDIS:
@@ -38,8 +39,13 @@ class DailyStatsGateway:
 
     def get_today_snapshot(self) -> Dict[str, float]:
         target_date = timezone.localdate()
+        cached = None
         if self.client:
-            cached = self._read_from_cache(target_date)
+            try:
+                cached = self._read_from_cache(target_date)
+            except Exception:
+                self.client = None
+                cached = None
             if cached:
                 cached['source'] = 'redis'
                 return cached
@@ -56,7 +62,10 @@ class DailyStatsGateway:
     def _read_from_cache(self, day) -> Optional[Dict[str, float]]:
         if not self.client:
             return None
-        raw = self.client.hgetall(self.cache_key.format(date=day.isoformat()))
+        try:
+            raw = self.client.hgetall(self.cache_key.format(date=day.isoformat()))
+        except Exception:
+            return None
         if not raw:
             return None
         return {key: float(value) for key, value in raw.items()}
@@ -70,7 +79,7 @@ class DailyStatsGateway:
             self.client.expire(key, 3600)
         except Exception:
             # Si Redis no está disponible no se interrumpe el dashboard.
-            pass
+            self.client = None
 
     def _compute_from_database(self, target_date) -> Dict[str, float]:
         readings = SensorSample.objects.filter(packet__timestamp__date=target_date)

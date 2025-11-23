@@ -15,46 +15,34 @@
 </section>
 
 <form method="get" class="filter-bar">
-    <label>
-        <span>Año</span>
-        <select name="year">
-            <option value="">Todos</option>
-            {% for option in filter_options.years %}
-                <option value="{{ option.value }}" {% if active_filters.year == option.value %}selected{% endif %}>
-                    {{ option.label }}
-                </option>
-            {% endfor %}
-        </select>
-    </label>
-    <label>
-        <span>Mes</span>
-        <select name="month">
-            <option value="">Todos</option>
-            {% for option in filter_options.months %}
-                <option value="{{ option.value }}" {% if active_filters.month == option.value %}selected{% endif %}>
-                    {{ option.label|title }}
-                </option>
-            {% endfor %}
-        </select>
-        <small>Filtra también por mes</small>
-    </label>
-    <label>
-        <span>Día</span>
-        <select name="day">
-            <option value="">Todos</option>
-            {% for option in filter_options.days %}
-                <option value="{{ option.value }}" {% if active_filters.day == option.value %}selected{% endif %}>
-                    {{ option.label }}
-                </option>
-            {% endfor %}
-        </select>
-        <small>Opcional: día específico</small>
-    </label>
-    <div class="filter-actions">
-        <button type="submit">Aplicar filtros</button>
-        {% if filters_applied %}
-            <a class="ghost-button ghost-button--small" href="{{ filter_reset_url }}">Limpiar</a>
-        {% endif %}
+    <div class="filter-row">
+        <label>
+            <div class="filter-label">
+                <span>Año</span>
+                <span class="hint">2023 – {{ filter_range.end_year }}</span>
+            </div>
+            <input class="filter-input" type="number" name="year" min="2023" max="{{ filter_range.end_year }}" placeholder="Ej: {{ filter_range.end_year }}" value="{{ active_filters.year|default_if_none:'' }}">
+        </label>
+        <label>
+            <div class="filter-label">
+                <span>Mes</span>
+                <span class="hint">1 = Ene · 12 = Dic</span>
+            </div>
+            <input class="filter-input" type="number" name="month" min="1" max="12" placeholder="1 - 12" value="{{ active_filters.month|default_if_none:'' }}">
+        </label>
+        <label>
+            <div class="filter-label">
+                <span>Día</span>
+                <span class="hint">Opcional · 1 – 31</span>
+            </div>
+            <input class="filter-input" type="number" name="day" min="1" max="31" placeholder="1 - 31" value="{{ active_filters.day|default_if_none:'' }}">
+        </label>
+        <div class="filter-actions">
+            <button type="submit">Aplicar filtros</button>
+            {% if filters_applied %}
+                <a class="ghost-button ghost-button--small" href="{{ filter_reset_url }}">Limpiar</a>
+            {% endif %}
+        </div>
     </div>
 </form>
 

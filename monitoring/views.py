@@ -40,7 +40,8 @@ class DashboardView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         base_qs = SensorSample.objects.select_related('packet').filter(packet__timestamp__date__gte=date(2023, 1, 1))
-        filters = self._extract_filters()
+        end_year = self._latest_year(base_qs)
+        filters = self._extract_filters(end_year=end_year)
         historical_qs = self._apply_time_filters(base_qs, filters)
         range_meta = self._range_metadata(historical_qs)
         global_stats = self._global_aggregates(historical_qs)
@@ -62,12 +63,16 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             'filter_description': self._filter_description(filters, range_meta),
             'filter_reset_url': self.request.path,
             'sim_stream_enabled': settings.SIM_STREAM_ENABLED,
+            'filter_range': {
+                'start_year': 2023,
+                'end_year': end_year,
+            },
         })
         return context
 
-    def _extract_filters(self):
+    def _extract_filters(self, end_year):
         return {
-            'year': self._safe_int(self.request.GET.get('year'), minimum=2000, maximum=2100),
+            'year': self._safe_int(self.request.GET.get('year'), minimum=2023, maximum=end_year),
             'month': self._safe_int(self.request.GET.get('month'), minimum=1, maximum=12),
             'day': self._safe_int(self.request.GET.get('day'), minimum=1, maximum=31),
         }
@@ -127,6 +132,12 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         if filters['day']:
             parts.append(f"Día {filters['day']:02d}")
         return " · ".join(parts)
+
+    def _latest_year(self, qs):
+        latest = qs.order_by('-packet__timestamp').values_list('packet__timestamp', flat=True).first()
+        if latest:
+            return max(latest.year, timezone.localdate().year)
+        return timezone.localdate().year
 
     def _format_daily_insights(self, stats):
         total = stats.get('total_readings', 0)
