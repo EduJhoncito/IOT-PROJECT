@@ -1,1 +1,1 @@
-web: gunicorn igp_dashboard.wsgi:application --log-file -
+web: gunicorn igp_dashboard.wsgi
