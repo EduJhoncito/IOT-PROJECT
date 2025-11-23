@@ -179,7 +179,8 @@
 {% block extra_js %}
 <script>
     window.dashboardData = JSON.parse('{{ chart_data|escapejs }}');
-    window.streamEndpoint = "{% url 'monitoring:sensor-stream' %}";
-    window.simStreamEnabled = {{ sim_stream_enabled|yesno:"true,false" }};
+    // desactivar simulación SSE
+    window.streamEndpoint = null;
+    window.simStreamEnabled = false;
 </script>
 {% endblock %}

@@ -1,105 +1,116 @@
 from __future__ import annotations
-
 from typing import Dict, Optional
-
 from django.conf import settings
-from django.db.models import Avg, Count, Max, Min, Q
 from django.utils import timezone
-
-from monitoring.models import SensorSample
+import json
 
 try:
-    import redis  # type: ignore
-except ImportError:  # pragma: no cover - dependencia opcional
+    import redis
+except ImportError:
     redis = None
 
 
 class DailyStatsGateway:
-    """
-    Maneja la obtención de métricas diarias desde Redis, con fallback a la BD.
-    """
 
-    cache_key = "igp:dashboard:daily:{date}"
+    HUM_HIST = "sensor:humedad:{id}:historico"
+    VIB_HIST = "sensor:vibracion:{id}:historico"
+    INC_HIST = "sensor:inclinacion:{id}:historico"
+    VIB_STATS = "sensor:vibracion:{id}:stats"
+    ALERT_STATS = "sensor:alerta:stats"
 
     def __init__(self):
         self.client = None
-        if getattr(settings, 'REDIS_URL', None) and redis is not None:
+        if getattr(settings, "REDIS_URL", None) and redis is not None:
             try:
                 self.client = redis.Redis.from_url(
-                    settings.REDIS_URL,
-                    decode_responses=True,
-                    socket_timeout=0.5,
-                    socket_connect_timeout=0.5,
+                    settings.REDIS_URL, decode_responses=True
                 )
-                # Ping para validar conexión cuando se exige Redis
-                if settings.REQUIRE_REDIS:
-                    self.client.ping()
-            except Exception:
+                self.client.ping()
+                print("REDIS Conectado OK")
+            except Exception as e:
+                print("REDIS ERROR:", e)
                 self.client = None
 
-    def get_today_snapshot(self) -> Dict[str, float]:
-        target_date = timezone.localdate()
-        cached = None
+    def get_today_snapshot(self):
         if self.client:
             try:
-                cached = self._read_from_cache(target_date)
-            except Exception:
-                self.client = None
-                cached = None
-            if cached:
-                cached['source'] = 'redis'
-                return cached
+                return self._read_from_redis() | {"source": "redis"}
+            except Exception as e:
+                print("REDIS SNAPSHOT ERROR:", e)
 
-        if settings.REQUIRE_REDIS and not self.client:
-            # Si se exige Redis, no hacemos fallback silencioso.
-            return {'source': 'redis-off', 'total_readings': 0}
+        return {"source": "database"}  # evitar fallbacks incorrectos
 
-        snapshot = self._compute_from_database(target_date)
-        self._write_to_cache(target_date, snapshot)
-        snapshot['source'] = 'database'
-        return snapshot
+    # -------------------------------
+    # LECTURA REAL DE REDIS
+    # -------------------------------
+    def _read_from_redis(self):
 
-    def _read_from_cache(self, day) -> Optional[Dict[str, float]]:
-        if not self.client:
-            return None
-        try:
-            raw = self.client.hgetall(self.cache_key.format(date=day.isoformat()))
-        except Exception:
-            return None
-        if not raw:
-            return None
-        return {key: float(value) for key, value in raw.items()}
+        sensor_ids = self._discover_sensor_ids()
 
-    def _write_to_cache(self, day, payload: Dict[str, float]) -> None:
-        if not self.client:
-            return
-        key = self.cache_key.format(date=day.isoformat())
-        try:
-            self.client.hset(key, mapping={k: v for k, v in payload.items() if isinstance(v, (int, float))})
-            self.client.expire(key, 3600)
-        except Exception:
-            # Si Redis no está disponible no se interrumpe el dashboard.
-            self.client = None
+        humidity = []
+        vibration = []
+        tilt_events = 0
+        hit_events = 0
 
-    def _compute_from_database(self, target_date) -> Dict[str, float]:
-        readings = SensorSample.objects.filter(packet__timestamp__date=target_date)
-        aggregates = readings.aggregate(
-            pulse_avg=Avg('vib_pulse'),
-            pulse_peak=Max('vib_pulse'),
-            humidity_avg=Avg('soil_pct'),
-            humidity_peak=Max('soil_pct'),
-            humidity_floor=Min('soil_pct'),
-            hit_events=Count('id', filter=Q(vib_hit=True)),
-            inclination_events=Count('id', filter=Q(tilt=True)),
-        )
-        snapshot = {
-            'pulse_avg': round(aggregates.get('pulse_avg') or 0, 2),
-            'pulse_peak': aggregates.get('pulse_peak') or 0,
-            'humidity_avg': round(aggregates.get('humidity_avg') or 0, 2),
-            'humidity_peak': round(aggregates.get('humidity_peak') or 0, 2),
-            'humidity_floor': round(aggregates.get('humidity_floor') or 0, 2),
-            'hit_events': aggregates.get('hit_events') or 0,
-            'inclination_events': aggregates.get('inclination_events') or 0,
-            'total_readings': readings.count(),
+        for sid in sensor_ids:
+
+            # --- HUMEDAD (LIST)
+            for entry in self.client.lrange(self.HUM_HIST.format(id=sid), -200, -1):
+                parts = entry.split(":")
+                if len(parts) == 2:
+                    humidity.append(float(parts[1]))
+
+            # --- VIBRACIÓN (LIST)
+            for entry in self.client.lrange(self.VIB_HIST.format(id=sid), -200, -1):
+                parts = entry.split(":")
+                if len(parts) == 2:
+                    vibration.append(float(parts[1]))
+
+            # --- INCLINACIÓN (LIST)
+            for entry in self.client.lrange(self.INC_HIST.format(id=sid), -200, -1):
+                parts = entry.split(":")
+                if len(parts) == 2 and parts[1].isdigit():
+                    tilt_events += int(parts[1])
+
+            # --- STATS VIBRACIÓN (ZSET)
+            vib_stats = self.client.zrange(self.VIB_STATS.format(id=sid), 0, -1, withscores=True)
+            # score = pulse
+            vibration.extend([score for (_, score) in vib_stats])
+
+        # --- STATS ALERTA (ZSET con JSON)
+        alert_items = self.client.zrange(self.ALERT_STATS, 0, -1)
+        for raw in alert_items:
+            try:
+                data = json.loads(raw)
+                for s in data["payload"]["samples"]:
+                    if s["tilt"] == 1:
+                        tilt_events += 1
+                    if s["vib"].get("hit", 0) == 1:
+                        hit_events += 1
+            except:
+                pass
+
+        return {
+            "pulse_avg": round(sum(vibration)/len(vibration), 2) if vibration else 0,
+            "pulse_peak": max(vibration) if vibration else 0,
+
+            "humidity_avg": round(sum(humidity)/len(humidity), 2) if humidity else 0,
+            "humidity_peak": max(humidity) if humidity else 0,
+            "humidity_floor": min(humidity) if humidity else 0,
+
+            "hit_events": hit_events,
+            "inclination_events": tilt_events,
+            "total_readings": max(len(humidity), len(vibration)),
         }
-        return snapshot
+
+    # detectar sensores disponibles
+    def _discover_sensor_ids(self):
+        keys = self.client.keys("sensor:humedad:*:historico")
+        ids = set()
+        for k in keys:
+            try:
+                ids.add(int(k.split(":")[2]))
+            except:
+                pass
+        return sorted(ids or [1])
+# -------------------------------

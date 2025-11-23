@@ -3,3 +3,5 @@ psycopg[binary]==3.2.3
 whitenoise==6.6.0
 gunicorn==21.2.0
 redis==5.0.8
+python-dotenv
+redis

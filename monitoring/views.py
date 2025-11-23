@@ -13,6 +13,7 @@ from django.utils import timezone
 from django.views import View
 from django.views.generic import TemplateView
 
+from django.http import JsonResponse
 from django.conf import settings
 from .models import SensorSample
 from .services.redis_gateway import DailyStatsGateway
@@ -32,6 +33,10 @@ MONTH_NAMES = {
     12: "diciembre",
 }
 
+class RealtimeRedisView(LoginRequiredMixin, View):
+    def get(self, request, *args, **kwargs):
+        gateway = DailyStatsGateway()
+        return JsonResponse(gateway.get_today_snapshot())
 
 class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = 'dashboard.html'
