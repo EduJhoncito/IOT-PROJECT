@@ -151,7 +151,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 'label': 'Pulso promedio',
                 'value': f"{stats.get('pulse_avg', 0):.1f}",
                 'suffix': 'u',
-                'helper': f"Fuente {stats.get('source', 'base de datos')}",
+                'helper': "Fuente Histórica",
             },
             {
                 'label': 'Pulso máximo',

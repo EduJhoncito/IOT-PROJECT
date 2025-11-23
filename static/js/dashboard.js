@@ -217,7 +217,11 @@
         const data = window.dashboardData || {};
         renderBarChart("pulseChart", data.monthlyPulse || []);
         renderLineChart("humidityChart", data.humidityTrend || []);
-
+        document.getElementById("refresh-btn").addEventListener("click", (e) => {
+            e.preventDefault();  // evita que el form GET se envíe
+            location.reload();   // recarga TODA la página
+        });
+        
         initRealtimeStream(); // <<< IMPORTANTE
     });
 

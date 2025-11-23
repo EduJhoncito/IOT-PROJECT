@@ -14,42 +14,10 @@
     </div>
 </section>
 
-<form method="get" class="filter-bar">
-    <div class="filter-row">
-        <label>
-            <div class="filter-label">
-                <span>Año</span>
-                <span class="hint">2023 – {{ filter_range.end_year }}</span>
-            </div>
-            <input class="filter-input" type="number" name="year" min="2023" max="{{ filter_range.end_year }}" placeholder="Ej: {{ filter_range.end_year }}" value="{{ active_filters.year|default_if_none:'' }}">
-        </label>
-        <label>
-            <div class="filter-label">
-                <span>Mes</span>
-                <span class="hint">1 = Ene · 12 = Dic</span>
-            </div>
-            <input class="filter-input" type="number" name="month" min="1" max="12" placeholder="1 - 12" value="{{ active_filters.month|default_if_none:'' }}">
-        </label>
-        <label>
-            <div class="filter-label">
-                <span>Día</span>
-                <span class="hint">Opcional · 1 – 31</span>
-            </div>
-            <input class="filter-input" type="number" name="day" min="1" max="31" placeholder="1 - 31" value="{{ active_filters.day|default_if_none:'' }}">
-        </label>
-        <div class="filter-actions">
-            <button type="submit">Aplicar filtros</button>
-            {% if filters_applied %}
-                <a class="ghost-button ghost-button--small" href="{{ filter_reset_url }}">Limpiar</a>
-            {% endif %}
-        </div>
-    </div>
-</form>
-
 <section class="realtime-panel">
     <div class="panel-header">
         <div>
-            <p class="eyebrow">Simulación · SSE</p>
+            <p class="eyebrow">Streaming · IGP</p>
             <h2>Tiempo real</h2>
             <p class="hero-subtitle">Generación de paquetes cada 5 segundos mientras se integra Redis.</p>
         </div>
@@ -86,6 +54,50 @@
         </article>
     </div>
 </section>
+
+<form method="get" class="filter-bar">
+    <div class="panel-header">
+        <div>
+            <p class="eyebrow">Histórico · IGP</p>
+            <h2>Data Histórica</h2>
+        </div>
+        <div class="live-status">
+            <span>Refrescar Datos:</span>
+            <button type="button" id="refresh-btn" class="refresh-button">
+                🔄
+            </button>
+        </div>
+    </div>
+    <div class="filter-row">
+        <label>
+            <div class="filter-label">
+                <span>Año</span>
+                <span class="hint">2023 – {{ filter_range.end_year }}</span>
+            </div>
+            <input class="filter-input" type="number" name="year" min="2023" max="{{ filter_range.end_year }}" placeholder="Ej: {{ filter_range.end_year }}" value="{{ active_filters.year|default_if_none:'' }}">
+        </label>
+        <label>
+            <div class="filter-label">
+                <span>Mes</span>
+                <span class="hint">1 = Ene · 12 = Dic</span>
+            </div>
+            <input class="filter-input" type="number" name="month" min="1" max="12" placeholder="1 - 12" value="{{ active_filters.month|default_if_none:'' }}">
+        </label>
+        <label>
+            <div class="filter-label">
+                <span>Día</span>
+                <span class="hint">Opcional · 1 – 31</span>
+            </div>
+            <input class="filter-input" type="number" name="day" min="1" max="31" placeholder="1 - 31" value="{{ active_filters.day|default_if_none:'' }}">
+        </label>
+        <div class="filter-actions">
+            <button type="submit">Aplicar filtros</button>
+            {% if filters_applied %}
+                <a class="ghost-button ghost-button--small" href="{{ filter_reset_url }}">Limpiar</a>
+            {% endif %}
+        </div>
+    </div>
+</form>
 
 <section class="stat-grid">
     {% for insight in daily_insights %}

@@ -160,6 +160,7 @@ nav {
 
 .filter-bar {
     display: flex;
+    flex-direction: column;
     justify-content: center;
     gap: 1rem;
     margin: 1.25rem auto 2rem;
@@ -169,8 +170,36 @@ nav {
     background: rgba(5, 13, 26, 0.82);
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: inset 0 0 35px rgba(0, 0, 0, 0.4);
-    max-width: 1200px;
     align-items: stretch;
+    width: 100%;
+}
+
+.refresh-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.refresh-button {
+    background: linear-gradient(135deg, #00d7c1, #007bff);
+    color: white;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: 0.25s ease;
+    box-shadow: 0 0 8px rgba(0, 200, 255, 0.4);
+}
+
+.refresh-button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 12px rgba(0, 200, 255, 0.6);
+}
+
+.refresh-button:active {
+    transform: scale(0.97);
 }
 
 .filter-row {

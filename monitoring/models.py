@@ -6,7 +6,7 @@ class SensorPacket(models.Model):
     Representa un lote (payload) recibido desde el borde: misma secuencia, timestamp y alerta.
     """
 
-    seq = models.PositiveIntegerField(unique=True, db_index=True)
+    seq = models.PositiveIntegerField(db_index=True)
     timestamp = models.DateTimeField(db_index=True)
     alerta = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
