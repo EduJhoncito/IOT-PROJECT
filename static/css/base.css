@@ -394,6 +394,10 @@ nav {
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
+.margin-bottom-large {
+    margin-bottom: 3.5rem;
+}
+
 .stat-card,
 .kpi-card,
 .chart-card,

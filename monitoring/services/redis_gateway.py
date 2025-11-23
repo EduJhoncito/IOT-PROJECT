@@ -34,17 +34,17 @@ class DailyStatsGateway:
     def get_today_snapshot(self):
         if self.client:
             try:
-                return self._read_from_redis() | {"source": "redis"}
+                return self._read_from_backend_redis() | {"source": "redis"}
             except Exception as e:
                 print("REDIS SNAPSHOT ERROR:", e)
 
         return {"source": "database"}  # evitar fallbacks incorrectos
 
+
     # -------------------------------
     # LECTURA REAL DE REDIS
     # -------------------------------
-    def _read_from_redis(self):
-
+    def _read_from_backend_redis(self):
         sensor_ids = self._discover_sensor_ids()
 
         humidity = []
@@ -54,53 +54,121 @@ class DailyStatsGateway:
 
         for sid in sensor_ids:
 
-            # --- HUMEDAD (LIST)
-            for entry in self.client.lrange(self.HUM_HIST.format(id=sid), -200, -1):
-                parts = entry.split(":")
-                if len(parts) == 2:
-                    humidity.append(float(parts[1]))
+            # --- HUMEDAD (LIST) -> cada elemento es JSON {"porcentaje":.., ...}
+            h_items = self.client.lrange(self.HUM_HIST.format(id=sid), -200, -1)
+            for entry in h_items:
+                try:
+                    obj = json.loads(entry)
+                    pct = obj.get("porcentaje") or obj.get("pct") or None
+                    if pct is not None:
+                        humidity.append(float(pct))
+                except Exception:
+                    # fallback: si no es JSON, intentar split por ":" como antes (legacy)
+                    try:
+                        parts = entry.split(":")
+                        if len(parts) == 2:
+                            humidity.append(float(parts[1]))
+                    except Exception:
+                        pass
 
             # --- VIBRACIÓN (LIST)
-            for entry in self.client.lrange(self.VIB_HIST.format(id=sid), -200, -1):
-                parts = entry.split(":")
-                if len(parts) == 2:
-                    vibration.append(float(parts[1]))
+            v_items = self.client.lrange(self.VIB_HIST.format(id=sid), -200, -1)
+            for entry in v_items:
+                # intentar JSON primero
+                try:
+                    obj = json.loads(entry)
+                    # si guardas objetos o formatos distintos, intenta mapear:
+                    # si es {"pulse": X} o similar
+                    if isinstance(obj, dict) and "pulse" in obj:
+                        vibration.append(float(obj["pulse"]))
+                        continue
+                except Exception:
+                    pass
+                # fallback: si es "timestamp:value" como antes
+                try:
+                    parts = entry.split(":")
+                    if len(parts) == 2:
+                        vibration.append(float(parts[1]))
+                except Exception:
+                    pass
 
             # --- INCLINACIÓN (LIST)
-            for entry in self.client.lrange(self.INC_HIST.format(id=sid), -200, -1):
-                parts = entry.split(":")
-                if len(parts) == 2 and parts[1].isdigit():
-                    tilt_events += int(parts[1])
+            inc_items = self.client.lrange(self.INC_HIST.format(id=sid), -200, -1)
+            for entry in inc_items:
+                try:
+                    obj = json.loads(entry)
+                    val = obj.get("estado") if isinstance(obj, dict) else None
+                    if val is None:
+                        # legacy
+                        parts = entry.split(":")
+                        if len(parts) == 2 and parts[1].isdigit():
+                            tilt_events += int(parts[1])
+                    else:
+                        tilt_events += int(val)
+                except Exception:
+                    try:
+                        parts = entry.split(":")
+                        if len(parts) == 2 and parts[1].isdigit():
+                            tilt_events += int(parts[1])
+                    except Exception:
+                        pass
 
-            # --- STATS VIBRACIÓN (ZSET)
-            vib_stats = self.client.zrange(self.VIB_STATS.format(id=sid), 0, -1, withscores=True)
-            # score = pulse
-            vibration.extend([score for (_, score) in vib_stats])
-
-        # --- STATS ALERTA (ZSET con JSON)
-        alert_items = self.client.zrange(self.ALERT_STATS, 0, -1)
-        for raw in alert_items:
+            # --- STATS VIBRACIÓN (ZSET) -> algunos guardan score=pulse
             try:
-                data = json.loads(raw)
-                for s in data["payload"]["samples"]:
-                    if s["tilt"] == 1:
-                        tilt_events += 1
-                    if s["vib"].get("hit", 0) == 1:
-                        hit_events += 1
-            except:
+                vib_stats = self.client.zrange(self.VIB_STATS.format(id=sid), 0, -1, withscores=True)
+                vibration.extend([float(score) for (_, score) in vib_stats if score is not None])
+            except Exception:
+                pass
+
+        # --- STATS ALERTA (ZSET con JSON) -> agregar conteo de eventos
+        try:
+            alert_items = self.client.zrange(self.ALERT_STATS, 0, -1)
+            for raw in alert_items:
+                try:
+                    data = json.loads(raw)
+                    for s in data.get("payload", {}).get("samples", []):
+                        if s.get("tilt") == 1:
+                            tilt_events += 1
+                        if s.get("vib", {}).get("hit", 0) == 1:
+                            hit_events += 1
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # --- último paquete guardado explícitamente (mejor fuente para last_ts/seq)
+        last_seq = None
+        last_ts = None
+        try:
+            last_raw = self.client.get("sensor:last_packet")
+            if last_raw:
+                last_obj = json.loads(last_raw)
+                last_seq = last_obj.get("seq")
+                last_ts = last_obj.get("ts")
+        except Exception:
+            # fallback a última alerta en zset (si quieres)
+            try:
+                latest_alert = self.client.zrevrange(self.ALERT_STATS, 0, 0)
+                if latest_alert:
+                    a = json.loads(latest_alert[0])
+                    last_seq = a.get("seq") or a.get("payload", {}).get("seq")
+                    last_ts = a.get("timestamp") or a.get("payload", {}).get("ts")
+            except Exception:
                 pass
 
         return {
-            "pulse_avg": round(sum(vibration)/len(vibration), 2) if vibration else 0,
+            "pulse_avg": round(sum(vibration) / len(vibration), 2) if vibration else 0,
             "pulse_peak": max(vibration) if vibration else 0,
 
-            "humidity_avg": round(sum(humidity)/len(humidity), 2) if humidity else 0,
+            "humidity_avg": round(sum(humidity) / len(humidity), 2) if humidity else 0,
             "humidity_peak": max(humidity) if humidity else 0,
             "humidity_floor": min(humidity) if humidity else 0,
 
             "hit_events": hit_events,
             "inclination_events": tilt_events,
             "total_readings": max(len(humidity), len(vibration)),
+            "last_seq": last_seq,
+            "last_timestamp": last_ts
         }
 
     # detectar sensores disponibles
